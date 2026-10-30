@@ -8,6 +8,12 @@ spring:
   sql:
     init:
       mode: always
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      acks: all
+      properties:
+        max.block.ms: 5000
 
 server:
   port: 8081
