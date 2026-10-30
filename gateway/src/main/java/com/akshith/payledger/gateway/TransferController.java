@@ -30,11 +30,13 @@ public class TransferController {
     }
 
     private final LedgerClient ledger;
+    private final RateLimiter rateLimiter;
 
     // Transfer.from and Transfer.to share one DataLoader, so a whole page costs a single GetAccounts call.
     // (@BatchMapping would register one loader per field, i.e. one call for "from" and another for "to".)
-    public TransferController(LedgerClient ledger, BatchLoaderRegistry registry) {
+    public TransferController(LedgerClient ledger, RateLimiter rateLimiter, BatchLoaderRegistry registry) {
         this.ledger = ledger;
+        this.rateLimiter = rateLimiter;
         registry.forTypePair(Long.class, Account.class).registerMappedBatchLoader((ids, env) -> {
             String owner = SecurityContextHolder.getContext().getAuthentication().getName();
             return Mono.fromCallable(() -> ledger.getAccounts(owner, ids).stream()
@@ -50,6 +52,7 @@ public class TransferController {
 
     @MutationMapping
     public Transfer transfer(@Argument TransferInput input, Principal user) {
+        rateLimiter.check(user.getName());
         return ledger.transfer(user.getName(), input.fromAccountId(), input.toAccountId(), input.amountCents(),
                 input.idempotencyKey()).getTransfer();
     }

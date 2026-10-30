@@ -13,6 +13,9 @@ spring:
     redis:
       host: localhost
       port: 6379
+      # Short timeouts so a Redis outage fails fast instead of hanging requests.
+      timeout: 500ms
+      connect-timeout: 500ms
   graphql:
     graphiql:
       enabled: true

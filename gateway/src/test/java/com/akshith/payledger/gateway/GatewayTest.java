@@ -111,6 +111,21 @@ class GatewayTest {
         assertThat(transferError(token, 3)).isEqualTo("INTERNAL_ERROR: ledger unavailable");
     }
 
+    @Test
+    void loginIsRateLimitedPerUsername() {
+        String user = username();
+        register(user, "password123");
+        for (int i = 0; i < 19; i++) {
+            assertThat(login(user).getErrors()).isEmpty();
+        }
+
+        assertThat(login(user).getErrors()).extracting(ResponseError::getMessage).containsExactly("rate limited");
+    }
+
+    private ClientGraphQlResponse login(String user) {
+        return execute(null, "mutation { login(username: \"%s\", password: \"password123\") { accessToken } }", user);
+    }
+
     private String transferError(String token, int amount) {
         ResponseError error = execute(token, """
                 mutation { transfer(input: {fromAccountId: 1, toAccountId: 2, amountCents: %d, idempotencyKey: "k"}) { id } }""",

@@ -14,9 +14,11 @@ import org.springframework.stereotype.Controller;
 public class AccountController {
 
     private final LedgerClient ledger;
+    private final RateLimiter rateLimiter;
 
-    public AccountController(LedgerClient ledger) {
+    public AccountController(LedgerClient ledger, RateLimiter rateLimiter) {
         this.ledger = ledger;
+        this.rateLimiter = rateLimiter;
     }
 
     @QueryMapping
@@ -31,11 +33,13 @@ public class AccountController {
 
     @MutationMapping
     public Account openAccount(Principal user) {
+        rateLimiter.check(user.getName());
         return ledger.openAccount(user.getName());
     }
 
     @MutationMapping
     public Account deposit(@Argument long accountId, @Argument int amountCents, Principal user) {
+        rateLimiter.check(user.getName());
         return ledger.deposit(user.getName(), accountId, amountCents);
     }
 }

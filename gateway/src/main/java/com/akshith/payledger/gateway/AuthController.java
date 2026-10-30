@@ -12,9 +12,11 @@ import org.springframework.stereotype.Controller;
 public class AuthController {
 
     private final AuthService auth;
+    private final RateLimiter rateLimiter;
 
-    public AuthController(AuthService auth) {
+    public AuthController(AuthService auth, RateLimiter rateLimiter) {
         this.auth = auth;
+        this.rateLimiter = rateLimiter;
     }
 
     @QueryMapping
@@ -25,11 +27,13 @@ public class AuthController {
 
     @MutationMapping
     public AuthPayload register(@Argument String username, @Argument String password) {
+        rateLimiter.check(username);
         return auth.register(username, password);
     }
 
     @MutationMapping
     public AuthPayload login(@Argument String username, @Argument String password) {
+        rateLimiter.check(username);
         return auth.login(username, password);
     }
 
