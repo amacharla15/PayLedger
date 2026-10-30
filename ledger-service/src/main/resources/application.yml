@@ -22,6 +22,9 @@ grpc:
   port: 9090
 
 management:
+  metrics:
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:

@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: payledger
 resources:
   - ../../base
+  - ../../../observability
   - ingress.yaml
   - hpa.yaml
 # Images are built locally and copied into the cluster with `kind load docker-image`.

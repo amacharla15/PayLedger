@@ -1,5 +1,7 @@
 package com.akshith.payledger.gateway;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,14 +21,17 @@ public class RateLimiter {
     private static final double TOKENS_PER_MS = 20 / 60_000.0;
 
     private final StringRedisTemplate redis;
+    private final Counter rejected;
     private final RedisScript<Long> script = RedisScript.of(new ClassPathResource("token_bucket.lua"), Long.class);
 
-    public RateLimiter(StringRedisTemplate redis) {
+    public RateLimiter(StringRedisTemplate redis, MeterRegistry meters) {
         this.redis = redis;
+        this.rejected = meters.counter("rate_limited");
     }
 
     public void check(String username) {
         if (!tryAcquire(username)) {
+            rejected.increment();
             throw new ApiException(ErrorType.BAD_REQUEST, "rate limited");
         }
     }

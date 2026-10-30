@@ -32,6 +32,7 @@ create table if not exists outbox (
     topic text not null,
     msg_key text not null,
     payload text not null,
+    traceparent text,
     created_at timestamptz not null default now(),
     sent_at timestamptz
 );

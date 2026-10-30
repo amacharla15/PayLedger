@@ -1,0 +1,16 @@
+# Prometheus, Grafana and Jaeger for the kind overlay, built from the same files Compose mounts.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - k8s.yaml
+configMapGenerator:
+  - name: prometheus-config
+    files:
+      - prometheus.yml=prometheus-k8s.yml
+  - name: grafana-provisioning
+    files:
+      - grafana/datasource.yml
+      - grafana/dashboard.yml
+  - name: grafana-dashboards
+    files:
+      - grafana/payledger.json

@@ -2,9 +2,12 @@ package com.akshith.payledger.ledger;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.context.Scope;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,11 +24,11 @@ public class OutboxPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
 
-    record Row(long id, String topic, String key, String payload) {
+    record Row(long id, String topic, String key, String payload, String traceparent) {
     }
 
-    private static final RowMapper<Row> ROW = (rs, n) ->
-            new Row(rs.getLong("id"), rs.getString("topic"), rs.getString("msg_key"), rs.getString("payload"));
+    private static final RowMapper<Row> ROW = (rs, n) -> new Row(rs.getLong("id"), rs.getString("topic"),
+            rs.getString("msg_key"), rs.getString("payload"), rs.getString("traceparent"));
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
@@ -41,7 +44,7 @@ public class OutboxPublisher {
 
     @Scheduled(fixedDelay = 500)
     public void publish() {
-        try {
+        try (Scope ignored = TraceContext.unsampled()) {
             publishBatch();
         } catch (RuntimeException e) {
             log.warn("outbox publish failed, will retry: {}", e.getMessage());
@@ -52,18 +55,27 @@ public class OutboxPublisher {
         return tx.execute(s -> {
             // SKIP LOCKED: a second ledger replica polling at the same moment takes other rows instead of the same ones.
             List<Row> rows = jdbc.query("""
-                    select id, topic, msg_key, payload from outbox where sent_at is null
+                    select id, topic, msg_key, payload, traceparent from outbox where sent_at is null
                     order by id limit 100 for update skip locked""", ROW);
             if (rows.isEmpty()) {
                 return 0;
             }
-            CompletableFuture<?>[] acks = rows.stream()
-                    .map(r -> kafka.send(r.topic(), r.key(), r.payload()))
-                    .toArray(CompletableFuture[]::new);
+            CompletableFuture<?>[] acks = rows.stream().map(this::send).toArray(CompletableFuture[]::new);
             CompletableFuture.allOf(acks).orTimeout(10, TimeUnit.SECONDS).join();
             jdbc.update("update outbox set sent_at = now() where id = any(?)",
                     (Object) rows.stream().map(Row::id).toArray(Long[]::new));
             return rows.size();
         });
+    }
+
+    // The send runs inside the stored trace context, so the Kafka publish joins the original request's trace.
+    private CompletableFuture<?> send(Row row) {
+        var record = new ProducerRecord<>(row.topic(), row.key(), row.payload());
+        if (row.traceparent() != null) {
+            record.headers().add("traceparent", row.traceparent().getBytes(StandardCharsets.UTF_8));
+        }
+        try (Scope ignored = TraceContext.restore(row.traceparent())) {
+            return kafka.send(record);
+        }
     }
 }

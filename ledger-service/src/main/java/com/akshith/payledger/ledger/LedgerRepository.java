@@ -116,8 +116,9 @@ public class LedgerRepository {
                 fromId, transfer.getId(), -amount, toId, transfer.getId(), amount);
 
         var event = new TransferEvent(transfer.getId(), fromId, toId, amount, from.getOwnerId(), to.getOwnerId());
-        jdbc.update("insert into outbox (topic, msg_key, payload) values ('transfers', ?, ?)",
-                String.valueOf(fromId), json.writeValueAsString(event));
+        // The trace context rides along so the scheduled publisher can continue this request's trace.
+        jdbc.update("insert into outbox (topic, msg_key, payload, traceparent) values ('transfers', ?, ?, ?)",
+                String.valueOf(fromId), json.writeValueAsString(event), TraceContext.current());
         return TransferResult.newBuilder().setTransfer(transfer).build();
     }
 

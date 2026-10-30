@@ -29,6 +29,10 @@ spec:
       containers:
         - name: gateway
           image: payledger/gateway
+          envFrom:
+            - configMapRef:
+                name: otel
+                optional: true
           env:
             - name: SPRING_DATASOURCE_URL
               value: jdbc:postgresql://postgres:5432/auth

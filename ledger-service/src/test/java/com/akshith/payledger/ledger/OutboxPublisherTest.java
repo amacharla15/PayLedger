@@ -3,6 +3,13 @@ package com.akshith.payledger.ledger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,6 +69,26 @@ class OutboxPublisherTest {
             Thread.sleep(100); // the ack arrives before the commit that sets sent_at
         }
         assertThat(unsent(marker)).isZero();
+    }
+
+    @Test
+    void traceContextTravelsFromRequestThroughOutboxToKafkaHeader() {
+        String traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+        String spanId = "00f067aa0ba902b7";
+        long a = ledger.openAccount("max").getId();
+        long b = ledger.openAccount("nia").getId();
+        ledger.deposit("max", a, 100);
+        SpanContext requestSpan = SpanContext.create(traceId, spanId, TraceFlags.getSampled(), TraceState.getDefault());
+        long transferId;
+        try (Scope ignored = Context.root().with(Span.wrap(requestSpan)).makeCurrent()) {
+            transferId = ledger.transfer("max", a, b, 10, UUID.randomUUID().toString()).getTransfer().getId();
+        }
+
+        var records = consume("transfers", r -> r.value().contains("\"transferId\":" + transferId + ","), 1);
+
+        assertThat(records).hasSize(1);
+        assertThat(new String(records.getFirst().headers().lastHeader("traceparent").value(), StandardCharsets.UTF_8))
+                .isEqualTo("00-" + traceId + "-" + spanId + "-01");
     }
 
     @Test

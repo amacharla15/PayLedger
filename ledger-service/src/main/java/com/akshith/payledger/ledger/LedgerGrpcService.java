@@ -15,6 +15,8 @@ import com.akshith.payledger.proto.TransferRequest;
 import com.akshith.payledger.proto.TransferResult;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,9 +28,13 @@ public class LedgerGrpcService extends LedgerGrpc.LedgerImplBase {
     private static final Logger log = LoggerFactory.getLogger(LedgerGrpcService.class);
 
     private final LedgerRepository ledger;
+    private final MeterRegistry meters;
+    private final Timer transferLatency;
 
-    public LedgerGrpcService(LedgerRepository ledger) {
+    public LedgerGrpcService(LedgerRepository ledger, MeterRegistry meters) {
         this.ledger = ledger;
+        this.meters = meters;
+        this.transferLatency = Timer.builder("transfer.latency").publishPercentileHistogram().register(meters);
     }
 
     @Override
@@ -62,8 +68,23 @@ public class LedgerGrpcService extends LedgerGrpc.LedgerImplBase {
 
     @Override
     public void transfer(TransferRequest req, StreamObserver<TransferResult> out) {
-        respond(out, () -> ledger.transfer(req.getOwnerId(), req.getFromAccountId(), req.getToAccountId(),
-                req.getAmountCents(), req.getIdempotencyKey()));
+        respond(out, () -> transferLatency.record(() -> {
+            try {
+                TransferResult result = ledger.transfer(req.getOwnerId(), req.getFromAccountId(), req.getToAccountId(),
+                        req.getAmountCents(), req.getIdempotencyKey());
+                countTransfer(result.getDuplicate() ? "duplicate" : "ok");
+                return result;
+            } catch (LedgerException e) {
+                if (e.reason() == LedgerException.Reason.INSUFFICIENT_FUNDS) {
+                    countTransfer("insufficient_funds");
+                }
+                throw e;
+            }
+        }));
+    }
+
+    private void countTransfer(String result) {
+        meters.counter("transfers", "result", result).increment();
     }
 
     @Override

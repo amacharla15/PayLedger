@@ -2,6 +2,7 @@ package com.akshith.payledger.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -26,7 +27,7 @@ class RateLimiterTest {
 
     @BeforeAll
     static void connect() {
-        limiter = new RateLimiter(new StringRedisTemplate(factory(redis.getHost(), redis.getMappedPort(6379))));
+        limiter = new RateLimiter(new StringRedisTemplate(factory(redis.getHost(), redis.getMappedPort(6379))), new SimpleMeterRegistry());
     }
 
     @Test
@@ -76,7 +77,7 @@ class RateLimiterTest {
 
     @Test
     void failsOpenWhenRedisIsDown() {
-        RateLimiter down = new RateLimiter(new StringRedisTemplate(factory("localhost", 1)));
+        RateLimiter down = new RateLimiter(new StringRedisTemplate(factory("localhost", 1)), new SimpleMeterRegistry());
 
         assertThat(down.tryAcquire(user())).isTrue();
     }

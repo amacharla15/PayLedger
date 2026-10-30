@@ -17,6 +17,10 @@ spec:
       containers:
         - name: notifier
           image: payledger/notifier
+          envFrom:
+            - configMapRef:
+                name: otel
+                optional: true
           env:
             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
               value: kafka:9092

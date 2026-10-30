@@ -31,6 +31,10 @@ spec:
       containers:
         - name: ledger
           image: payledger/ledger-service
+          envFrom:
+            - configMapRef:
+                name: otel
+                optional: true
           env:
             - name: SPRING_DATASOURCE_URL
               value: jdbc:postgresql://postgres:5432/ledger
