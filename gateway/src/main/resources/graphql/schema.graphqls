@@ -1,0 +1,47 @@
+type Query {
+  me: String
+  myAccounts: [Account!]!
+  account(id: ID!): Account
+  transfers(accountId: ID!, first: Int = 20, after: ID): TransferPage!
+}
+
+type Mutation {
+  register(username: String!, password: String!): AuthPayload!
+  login(username: String!, password: String!): AuthPayload!
+  refresh(refreshToken: String!): AuthPayload!
+  logout(refreshToken: String!): Boolean!
+  openAccount: Account!
+  deposit(accountId: ID!, amountCents: Int!): Account!
+  transfer(input: TransferInput!): Transfer!
+}
+
+input TransferInput {
+  fromAccountId: ID!
+  toAccountId: ID!
+  amountCents: Int!
+  idempotencyKey: String!
+}
+
+type AuthPayload {
+  accessToken: String!
+  refreshToken: String!
+}
+
+type Account {
+  id: ID!
+  ownerId: String!
+  balanceCents: Int!
+}
+
+type Transfer {
+  id: ID!
+  from: Account!
+  to: Account!
+  amountCents: Int!
+  createdAt: String!
+}
+
+type TransferPage {
+  items: [Transfer!]!
+  nextCursor: ID
+}
