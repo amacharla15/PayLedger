@@ -1,0 +1,71 @@
+# Headless: DNS returns every ledger pod IP, so the gateway's gRPC round_robin can spread calls.
+# A ClusterIP Service would pin the gateway's single long-lived HTTP/2 connection to one pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger-headless
+spec:
+  clusterIP: None
+  selector:
+    app: ledger
+  ports:
+    - name: grpc
+      port: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ledger
+  template:
+    metadata:
+      labels:
+        app: ledger
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: ledger
+          image: payledger/ledger-service
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres:5432/ledger
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: payledger-secrets
+                  key: POSTGRES_PASSWORD
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
+          ports:
+            - name: grpc
+              containerPort: 9090
+            - name: http
+              containerPort: 8081
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
