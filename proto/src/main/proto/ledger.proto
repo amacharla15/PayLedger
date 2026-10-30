@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package payledger.ledger.v1;
+
+option java_multiple_files = true;
+option java_package = "com.akshith.payledger.proto";
+
+service Ledger {
+  rpc OpenAccount(OpenAccountRequest) returns (Account);
+  rpc GetAccount(GetAccountRequest) returns (Account);
+  rpc GetAccounts(GetAccountsRequest) returns (GetAccountsResponse);   // batch, for GraphQL DataLoader
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc Deposit(DepositRequest) returns (Account);
+  rpc Transfer(TransferRequest) returns (TransferResult);
+  rpc ListTransfers(ListTransfersRequest) returns (ListTransfersResponse); // cursor pagination by transfer id
+}
+
+message Account {
+  int64 id = 1;
+  string owner_id = 2;
+  int64 balance_cents = 3;
+}
+
+message Transfer {
+  int64 id = 1;
+  int64 from_account_id = 2;
+  int64 to_account_id = 3;
+  int64 amount_cents = 4;
+  string created_at = 5;
+}
+
+message OpenAccountRequest {
+  string owner_id = 1;
+}
+
+message GetAccountRequest {
+  string owner_id = 1;
+  int64 account_id = 2;
+}
+
+// Accounts the caller does not own come back with balance_cents = 0.
+message GetAccountsRequest {
+  string owner_id = 1;
+  repeated int64 account_ids = 2;
+}
+
+message GetAccountsResponse {
+  repeated Account accounts = 1;
+}
+
+message ListAccountsRequest {
+  string owner_id = 1;
+}
+
+message ListAccountsResponse {
+  repeated Account accounts = 1;
+}
+
+message DepositRequest {
+  string owner_id = 1;
+  int64 account_id = 2;
+  int64 amount_cents = 3;
+}
+
+message TransferRequest {
+  string owner_id = 1;
+  int64 from_account_id = 2;
+  int64 to_account_id = 3;
+  int64 amount_cents = 4;
+  string idempotency_key = 5;
+}
+
+message TransferResult {
+  Transfer transfer = 1;
+  bool duplicate = 2;
+}
+
+// Newest first. Pass the previous page's next_cursor as after_id.
+message ListTransfersRequest {
+  string owner_id = 1;
+  int64 account_id = 2;
+  int32 page_size = 3;
+  optional int64 after_id = 4;
+}
+
+message ListTransfersResponse {
+  repeated Transfer transfers = 1;
+  optional int64 next_cursor = 2;
+}
