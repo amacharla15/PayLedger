@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      # Testcontainers uses the Docker daemon that GitHub-hosted Ubuntu runners already have.
+      - name: Test
+        run: ./gradlew test --no-daemon
+
+      - name: Build images
+        run: |
+          for service in ledger-service gateway notifier; do
+            docker build -f "$service/Dockerfile" -t "payledger/$service:${GITHUB_SHA::7}" .
+          done

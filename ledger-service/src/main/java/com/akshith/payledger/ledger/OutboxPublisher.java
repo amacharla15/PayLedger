@@ -23,6 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class OutboxPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
+    private static final int BATCH_SIZE = 100;
 
     record Row(long id, String topic, String key, String payload, String traceparent) {
     }
@@ -45,7 +46,11 @@ public class OutboxPublisher {
     @Scheduled(fixedDelay = 500)
     public void publish() {
         try (Scope ignored = TraceContext.unsampled()) {
-            publishBatch();
+            // Keep going while batches come back full, so a backlog drains without a 500 ms pause per batch.
+            int sent;
+            do {
+                sent = publishBatch();
+            } while (sent == BATCH_SIZE);
         } catch (RuntimeException e) {
             log.warn("outbox publish failed, will retry: {}", e.getMessage());
         }
@@ -56,7 +61,7 @@ public class OutboxPublisher {
             // SKIP LOCKED: a second ledger replica polling at the same moment takes other rows instead of the same ones.
             List<Row> rows = jdbc.query("""
                     select id, topic, msg_key, payload, traceparent from outbox where sent_at is null
-                    order by id limit 100 for update skip locked""", ROW);
+                    order by id limit ? for update skip locked""", ROW, BATCH_SIZE);
             if (rows.isEmpty()) {
                 return 0;
             }
