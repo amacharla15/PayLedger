@@ -1,3 +1,7 @@
+-- Both ledger replicas run this script at startup. The advisory lock makes the second one
+-- wait for the first instead of failing with relation already exists.
+select pg_advisory_lock(7001);
+
 create table if not exists accounts (
     id bigserial primary key,
     owner_id text not null,
@@ -53,3 +57,5 @@ create table if not exists withdrawals (
 );
 
 alter table entries add column if not exists withdrawal_id bigint references withdrawals (id);
+
+select pg_advisory_unlock(7001);
