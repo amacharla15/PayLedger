@@ -27,6 +27,7 @@ public class LedgerRepository {
             .setId(rs.getLong("id"))
             .setOwnerId(rs.getString("owner_id"))
             .setBalanceCents(rs.getLong("balance_cents"))
+            .setHeldCents(rs.getLong("held_cents"))
             .build();
 
     private static final RowMapper<Transfer> TRANSFER = (rs, n) -> Transfer.newBuilder()
@@ -58,7 +59,7 @@ public class LedgerRepository {
     public List<Account> getAccounts(String owner, Collection<Long> ids) {
         return jdbc.query("select * from accounts where id = any(?)", ACCOUNT, (Object) ids.toArray(Long[]::new))
                 .stream()
-                .map(a -> a.getOwnerId().equals(owner) ? a : a.toBuilder().setBalanceCents(0).build())
+                .map(a -> a.getOwnerId().equals(owner) ? a : a.toBuilder().setBalanceCents(0).setHeldCents(0).build())
                 .toList();
     }
 
@@ -145,21 +146,21 @@ public class LedgerRepository {
         return page.build();
     }
 
-    private Account account(long id, boolean forUpdate) {
+    public Account account(long id, boolean forUpdate) {
         String sql = "select * from accounts where id = ?" + (forUpdate ? " for update" : "");
         return jdbc.query(sql, ACCOUNT, id).stream()
                 .findFirst()
                 .orElseThrow(() -> new LedgerException(NOT_FOUND, "account " + id + " not found"));
     }
 
-    private static Account owned(Account account, String owner) {
+    static Account owned(Account account, String owner) {
         if (!account.getOwnerId().equals(owner)) {
             throw new LedgerException(NOT_OWNER, "account " + account.getId() + " does not belong to you");
         }
         return account;
     }
 
-    private static void requirePositive(long amount) {
+    static void requirePositive(long amount) {
         if (amount <= 0) {
             throw new LedgerException(INVALID, "amount must be positive");
         }

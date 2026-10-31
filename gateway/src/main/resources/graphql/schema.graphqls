@@ -3,6 +3,7 @@ type Query {
   myAccounts: [Account!]!
   account(id: ID!): Account
   transfers(accountId: ID!, first: Int = 20, after: ID): TransferPage!
+  withdrawal(id: ID!): Withdrawal
 }
 
 type Mutation {
@@ -13,11 +14,18 @@ type Mutation {
   openAccount: Account!
   deposit(accountId: ID!, amountCents: Int!): Account!
   transfer(input: TransferInput!): Transfer!
+  withdraw(input: WithdrawInput!): Withdrawal!
 }
 
 input TransferInput {
   fromAccountId: ID!
   toAccountId: ID!
+  amountCents: Int!
+  idempotencyKey: String!
+}
+
+input WithdrawInput {
+  accountId: ID!
   amountCents: Int!
   idempotencyKey: String!
 }
@@ -31,6 +39,7 @@ type Account {
   id: ID!
   ownerId: String!
   balanceCents: Int!
+  heldCents: Int!
 }
 
 type Transfer {
@@ -44,4 +53,13 @@ type Transfer {
 type TransferPage {
   items: [Transfer!]!
   nextCursor: ID
+}
+
+# status: PENDING until the saga finishes, then SETTLED (paid out) or RELEASED (money returned).
+type Withdrawal {
+  id: ID!
+  accountId: ID!
+  amountCents: Int!
+  status: String!
+  createdAt: String!
 }

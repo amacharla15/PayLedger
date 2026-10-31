@@ -37,3 +37,19 @@ create table if not exists outbox (
     sent_at timestamptz
 );
 create index if not exists outbox_unsent on outbox (id) where sent_at is null;
+
+-- Withdrawals. A PENDING withdrawal moves money from balance_cents to held_cents with a hold entry.
+-- SETTLED drops the hold because the money left the ledger. RELEASED returns it with a release entry.
+alter table accounts add column if not exists held_cents bigint not null default 0 check (held_cents >= 0);
+
+create table if not exists withdrawals (
+    id bigserial primary key,
+    account_id bigint not null references accounts (id),
+    amount_cents bigint not null check (amount_cents > 0),
+    status text not null default 'PENDING' check (status in ('PENDING', 'SETTLED', 'RELEASED')),
+    idempotency_key text unique not null,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+alter table entries add column if not exists withdrawal_id bigint references withdrawals (id);

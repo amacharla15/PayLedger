@@ -13,12 +13,15 @@ service Ledger {
   rpc Deposit(DepositRequest) returns (Account);
   rpc Transfer(TransferRequest) returns (TransferResult);
   rpc ListTransfers(ListTransfersRequest) returns (ListTransfersResponse); // cursor pagination by transfer id
+  rpc Withdraw(WithdrawRequest) returns (Withdrawal);
+  rpc GetWithdrawal(GetWithdrawalRequest) returns (Withdrawal);
 }
 
 message Account {
   int64 id = 1;
   string owner_id = 2;
   int64 balance_cents = 3;
+  int64 held_cents = 4;   // reserved by withdrawals that are still PENDING
 }
 
 message Transfer {
@@ -38,7 +41,7 @@ message GetAccountRequest {
   int64 account_id = 2;
 }
 
-// Accounts the caller does not own come back with balance_cents = 0.
+// Accounts the caller does not own come back with balance_cents and held_cents = 0.
 message GetAccountsRequest {
   string owner_id = 1;
   repeated int64 account_ids = 2;
@@ -86,4 +89,26 @@ message ListTransfersRequest {
 message ListTransfersResponse {
   repeated Transfer transfers = 1;
   optional int64 next_cursor = 2;
+}
+
+message WithdrawRequest {
+  string owner_id = 1;
+  int64 account_id = 2;
+  int64 amount_cents = 3;
+  string idempotency_key = 4;
+}
+
+message GetWithdrawalRequest {
+  string owner_id = 1;
+  int64 withdrawal_id = 2;
+}
+
+// status is PENDING, SETTLED or RELEASED.
+message Withdrawal {
+  int64 id = 1;
+  int64 account_id = 2;
+  int64 amount_cents = 3;
+  string status = 4;
+  string created_at = 5;
+  bool duplicate = 6;
 }

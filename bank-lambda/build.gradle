@@ -1,0 +1,6 @@
+// A plain jar with no dependencies is a valid Lambda deployment package: build/libs/bank-lambda.jar
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}

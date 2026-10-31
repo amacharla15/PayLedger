@@ -10,6 +10,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-kafka'
     implementation 'io.grpc:grpc-netty-shaded'
     implementation 'io.opentelemetry:opentelemetry-api'
+    implementation platform('software.amazon.awssdk:bom:2.57.7')
+    implementation 'software.amazon.awssdk:sfn'
+    implementation 'software.amazon.awssdk:sqs'
+    runtimeOnly 'software.amazon.awssdk:sts' // lets the default credential chain use IRSA tokens on EKS
     runtimeOnly 'org.postgresql:postgresql'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 

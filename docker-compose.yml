@@ -69,6 +69,15 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ledger
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      # Withdrawals use real AWS (Step Functions, SQS) and stay off unless AWS_ENABLED=true in your shell.
+      # Keys with no value are copied from your shell when set there (see README, "AWS withdrawal saga").
+      AWS_ENABLED: ${AWS_ENABLED:-false}
+      STATE_MACHINE_ARN: ${STATE_MACHINE_ARN:-}
+      WITHDRAWAL_QUEUE_URL: ${WITHDRAWAL_QUEUE_URL:-}
+      AWS_REGION:
+      AWS_ACCESS_KEY_ID:
+      AWS_SECRET_ACCESS_KEY:
+      AWS_SESSION_TOKEN:
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8081/actuator/health"]
       interval: 5s

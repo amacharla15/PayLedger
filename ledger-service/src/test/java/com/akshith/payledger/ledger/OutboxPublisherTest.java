@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -97,8 +98,8 @@ class OutboxPublisherTest {
                 insert into outbox (topic, msg_key, payload)
                 select 'outbox-race', (g % 7)::text, 'row-' || g from generate_series(1, 1000) g""");
         // Two extra publishers race the scheduled one, all three polling the same table.
-        OutboxPublisher first = new OutboxPublisher(jdbc, tx, kafka, new SimpleMeterRegistry());
-        OutboxPublisher second = new OutboxPublisher(jdbc, tx, kafka, new SimpleMeterRegistry());
+        OutboxPublisher first = new OutboxPublisher(jdbc, tx, kafka, new SimpleMeterRegistry(), Optional.empty(), "");
+        OutboxPublisher second = new OutboxPublisher(jdbc, tx, kafka, new SimpleMeterRegistry(), Optional.empty(), "");
         AtomicInteger firstCount = new AtomicInteger();
         AtomicInteger secondCount = new AtomicInteger();
         CountDownLatch start = new CountDownLatch(1);

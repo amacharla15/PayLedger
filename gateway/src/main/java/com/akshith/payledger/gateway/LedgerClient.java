@@ -4,6 +4,7 @@ import com.akshith.payledger.proto.Account;
 import com.akshith.payledger.proto.DepositRequest;
 import com.akshith.payledger.proto.GetAccountRequest;
 import com.akshith.payledger.proto.GetAccountsRequest;
+import com.akshith.payledger.proto.GetWithdrawalRequest;
 import com.akshith.payledger.proto.LedgerGrpc;
 import com.akshith.payledger.proto.ListAccountsRequest;
 import com.akshith.payledger.proto.ListTransfersRequest;
@@ -11,6 +12,8 @@ import com.akshith.payledger.proto.ListTransfersResponse;
 import com.akshith.payledger.proto.OpenAccountRequest;
 import com.akshith.payledger.proto.TransferRequest;
 import com.akshith.payledger.proto.TransferResult;
+import com.akshith.payledger.proto.WithdrawRequest;
+import com.akshith.payledger.proto.Withdrawal;
 import io.grpc.ManagedChannel;
 import io.grpc.StatusRuntimeException;
 import java.util.Collection;
@@ -69,6 +72,20 @@ public class LedgerClient {
         return call(s -> s.listTransfers(req.build()));
     }
 
+    public Withdrawal withdraw(String owner, long accountId, long amountCents, String idempotencyKey) {
+        return call(s -> s.withdraw(WithdrawRequest.newBuilder()
+                .setOwnerId(owner)
+                .setAccountId(accountId)
+                .setAmountCents(amountCents)
+                .setIdempotencyKey(idempotencyKey)
+                .build()));
+    }
+
+    public Withdrawal getWithdrawal(String owner, long withdrawalId) {
+        return call(s -> s.getWithdrawal(GetWithdrawalRequest.newBuilder()
+                .setOwnerId(owner).setWithdrawalId(withdrawalId).build()));
+    }
+
     private <T> T call(Function<LedgerGrpc.LedgerBlockingStub, T> rpc) {
         try {
             return rpc.apply(stub.withDeadlineAfter(2, TimeUnit.SECONDS));
@@ -77,7 +94,7 @@ public class LedgerClient {
             throw switch (e.getStatus().getCode()) {
                 case NOT_FOUND -> new ApiException(ErrorType.NOT_FOUND, description);
                 case PERMISSION_DENIED -> new ApiException(ErrorType.FORBIDDEN, description);
-                case FAILED_PRECONDITION -> new ApiException(ErrorType.BAD_REQUEST, "insufficient funds");
+                case FAILED_PRECONDITION -> new ApiException(ErrorType.BAD_REQUEST, description); // e.g. "insufficient funds"
                 case INVALID_ARGUMENT -> new ApiException(ErrorType.BAD_REQUEST, description);
                 case DEADLINE_EXCEEDED, UNAVAILABLE -> new ApiException(ErrorType.INTERNAL_ERROR, "ledger unavailable");
                 default -> new ApiException(ErrorType.INTERNAL_ERROR, "ledger error");

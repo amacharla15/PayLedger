@@ -21,6 +21,12 @@ server:
 grpc:
   port: 9090
 
+# The withdrawal saga needs AWS (Step Functions + SQS). Off by default so Compose, CI and tests run without credentials.
+aws:
+  enabled: ${AWS_ENABLED:false}
+  state-machine-arn: ${STATE_MACHINE_ARN:}
+  withdrawal-queue-url: ${WITHDRAWAL_QUEUE_URL:}
+
 management:
   metrics:
     tags:
