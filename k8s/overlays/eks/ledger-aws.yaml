@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger
+spec:
+  template:
+    spec:
+      serviceAccountName: ledger
+      securityContext:
+        # The app runs as uid 10001; fsGroup makes the injected IRSA token file readable to it.
+        fsGroup: 10001
+      containers:
+        - name: ledger
+          # envFrom is replaced as a whole by this patch, so the base's otel entry is repeated.
+          envFrom:
+            - configMapRef:
+                name: otel
+                optional: true
+            - configMapRef:
+                name: aws

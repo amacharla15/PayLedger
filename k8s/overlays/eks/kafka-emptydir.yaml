@@ -1,0 +1,8 @@
+# Same as postgres-emptydir.yaml; MSK would be the production choice.
+- op: remove
+  path: /spec/volumeClaimTemplates
+- op: add
+  path: /spec/template/spec/volumes
+  value:
+    - name: data
+      emptyDir: {}

@@ -1,0 +1,8 @@
+# EKS creates an AWS load balancer for this Service. Delete it before terraform destroy, or the load balancer
+# keeps the VPC from being deleted.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+spec:
+  type: LoadBalancer
