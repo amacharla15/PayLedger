@@ -2,6 +2,8 @@
 # Walks through the main flows against a running stack.
 #   ./demo.sh                                         Docker Compose on http://localhost:8080/graphql
 #   RUNTIME=kind ./demo.sh http://localhost/graphql   kind cluster behind ingress-nginx
+#   RUNTIME=eks ./demo.sh http://<load balancer>/graphql   EKS, printed by infra/deploy-eks.sh
+# Withdrawals run on EKS, or on Compose when the stack was started with AWS_ENABLED=true (see README).
 set -euo pipefail
 
 URL=${1:-http://localhost:8080/graphql}
@@ -31,6 +33,23 @@ step() {
 
 transfer() {
   echo "mutation { transfer(input: {fromAccountId: $1, toAccountId: $2, amountCents: $3, idempotencyKey: \"$4\"}) { id amountCents } }"
+}
+
+withdraw() {
+  echo "mutation { withdraw(input: {accountId: $1, amountCents: $2, idempotencyKey: \"$3\"}) { id status amountCents } }"
+}
+
+# Polls until the saga moves the withdrawal out of PENDING.
+wait_for_withdrawal() {
+  local status=PENDING
+  for _ in $(seq 1 30); do
+    status=$(gql "$A" "{ withdrawal(id: $1) { status } }" | field status)
+    if [ "$status" != PENDING ]; then
+      break
+    fi
+    sleep 2
+  done
+  echo "withdrawal $1: $status"
 }
 
 step "register $ALICE and $BOB, log in as $ALICE"
@@ -68,6 +87,21 @@ gql "$A" "$(transfer "$A_ACC" "$B_ACC" 13 "demo-$RUN-poison")"
 step "transfer history, newest first"
 gql "$A" "{ transfers(accountId: $A_ACC, first: 5) { items { id amountCents from { ownerId } to { ownerId } } nextCursor } }"
 
+if [ "$RUNTIME" = eks ] || [ "${AWS_ENABLED:-false}" = true ]; then
+  step "withdraw 1000 cents: held right away, then the saga asks the bank (about 1 in 10 is rejected and released)"
+  W=$(gql "$A" "$(withdraw "$A_ACC" 1000 "demo-$RUN-withdraw")")
+  echo "$W"
+  gql "$A" "{ account(id: $A_ACC) { balanceCents heldCents } }"
+  wait_for_withdrawal "$(echo "$W" | field id)"
+  gql "$A" "{ account(id: $A_ACC) { balanceCents heldCents } }"
+
+  step "withdraw 666 cents: the bank always rejects this amount, so the hold goes back to the balance"
+  W=$(gql "$A" "$(withdraw "$A_ACC" 666 "demo-$RUN-withdraw-666")")
+  echo "$W"
+  wait_for_withdrawal "$(echo "$W" | field id)"
+  gql "$A" "{ account(id: $A_ACC) { balanceCents heldCents } }"
+fi
+
 step "refresh token rotation: the first refresh works, reusing the old token fails"
 gql - "mutation { refresh(refreshToken: \"$REFRESH\") { refreshToken } }" | sed 's/"refreshToken":"[^"]*"/"refreshToken":"<new token>"/'
 gql - "mutation { refresh(refreshToken: \"$REFRESH\") { refreshToken } }"
@@ -98,7 +132,7 @@ case $RUNTIME in
     done
     JAEGER=http://localhost:16686
     ;;
-  kind)
+  kind | eks)
     step "transfers.DLT"
     kubectl -n payledger exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
       --topic transfers.DLT --from-beginning --timeout-ms 5000 2>/dev/null | grep "$ALICE" || true
@@ -113,5 +147,7 @@ case $RUNTIME in
     ;;
 esac
 
-step "traces"
-echo "$JAEGER/search?service=gateway&operation=POST%20%2Fgraphql"
+if [ "$RUNTIME" != eks ]; then
+  step "traces"
+  echo "$JAEGER/search?service=gateway&operation=POST%20%2Fgraphql"
+fi

@@ -1,6 +1,6 @@
 # PayLedger
 
-A payments ledger split into three Spring Boot services. Clients talk GraphQL to a gateway that handles JWT auth, refresh-token rotation and Redis token-bucket rate limiting, and calls the ledger over gRPC. The ledger keeps a double-entry ledger in Postgres and writes every transfer event to an outbox table in the same transaction; a scheduled publisher moves those rows to Kafka, where the notifier consumes them with Redis dedupe, retries and a dead-letter topic. Prometheus, Grafana and Jaeger (through the OpenTelemetry Java agent) watch all three.
+A payments ledger split into three Spring Boot services. Clients talk GraphQL to a gateway that handles JWT auth, refresh-token rotation and Redis token-bucket rate limiting, and calls the ledger over gRPC. The ledger keeps a double-entry ledger in Postgres and writes every transfer event to an outbox table in the same transaction; a scheduled publisher moves those rows to Kafka, where the notifier consumes them with Redis dedupe, retries and a dead-letter topic. Prometheus, Grafana and Jaeger (through the OpenTelemetry Java agent) watch all three. Withdrawals run as a saga on AWS: the ledger holds the money, Step Functions calls a bank Lambda, and the ledger settles or releases the hold through an SQS callback. Terraform builds the AWS resources and an EKS cluster.
 
 ```
 client ── GraphQL ──> gateway x2 ─────────────> Redis   refresh tokens, token buckets
@@ -24,7 +24,18 @@ client ── GraphQL ──> gateway x2 ─────────────
 Prometheus + Grafana scrape /actuator/prometheus on every service; the OpenTelemetry agent sends traces to Jaeger.
 ```
 
-Java 21, Spring Boot 4.1, grpc-java 1.84, Spring for GraphQL 2.0, spring-kafka 4.1, Kafka 4.4 (KRaft), Postgres 18, Redis 8.10.
+Withdrawal saga (only with `AWS_ENABLED=true`):
+
+```
+ledger ── outbox row ("sfn:withdrawal") ──> Step Functions "payledger-withdrawal"
+  ^                                           │ CallBank: Lambda "payledger-bank", retries BankUnavailable 3x
+  │                                           │ Settle if the bank paid, Release if it did not
+  │                                           v
+  └── WithdrawalWorker long-polls ──── SQS "withdrawal-actions" (SETTLE / RELEASE + task token)
+      updates Postgres, then SendTaskSuccess
+```
+
+Java 21, Spring Boot 4.1, grpc-java 1.84, Spring for GraphQL 2.0, spring-kafka 4.1, Kafka 4.4 (KRaft), Postgres 18, Redis 8.10, AWS SDK for Java 2.57, Terraform AWS provider 6.x, EKS 1.36.
 
 ## Run
 
@@ -89,6 +100,67 @@ metrics-server is needed for the gateway HPA (2 to 4 pods at 70% CPU); the patch
 
 These manifests pass `kubeconform -strict`, but the kind deployment itself has not been run end to end yet: the machine this was built on could not start nested containers.
 
+### AWS withdrawal saga (Compose + real AWS)
+
+Needs Terraform, the AWS CLI and an AWS account. The saga resources cost cents at demo volume; the $5 budget is created first.
+
+```bash
+docker run --rm -v "$PWD":/src -w /src eclipse-temurin:21-jdk ./gradlew :bank-lambda:jar --no-daemon
+```
+
+```bash
+echo 'alert_email = "you@example.com"' > infra/terraform/aws/terraform.tfvars
+terraform -chdir=infra/terraform/aws init
+terraform -chdir=infra/terraform/aws apply -target=aws_budgets_budget.monthly
+terraform -chdir=infra/terraform/aws apply
+```
+
+Confirm the SNS subscription email. Then give the IAM user whose keys you use the ledger's policy, and start Compose with the saga turned on:
+
+```bash
+aws iam attach-user-policy --user-name YOUR_USER --policy-arn "$(terraform -chdir=infra/terraform/aws output -raw ledger_policy_arn)"
+```
+
+```bash
+export AWS_ENABLED=true
+export AWS_REGION=$(terraform -chdir=infra/terraform/aws output -raw region)
+export STATE_MACHINE_ARN=$(terraform -chdir=infra/terraform/aws output -raw state_machine_arn)
+export WITHDRAWAL_QUEUE_URL=$(terraform -chdir=infra/terraform/aws output -raw withdrawal_queue_url)
+eval "$(aws configure export-credentials --format env)"
+docker compose up --build -d && ./demo.sh
+```
+
+The demo withdraws 1000 cents (settles, unless the fake bank rejects it, about 1 in 10) and 666 cents (always released, balance restored). Each run shows up in the Step Functions console. Without `AWS_ENABLED=true` the `withdraw` mutation returns "withdrawals need AWS_ENABLED=true" and everything else works as before.
+
+### EKS
+
+Apply the AWS saga stack above first; the EKS stack reuses its IAM policy. A session costs about $0.25 an hour: the EKS control plane ($0.10), two t3.medium nodes ($0.0416 each), the gateway's load balancer (about $0.025), public IPv4 addresses ($0.005 each) and the node disks. Destroy it when you are done; nothing should be left running.
+
+```bash
+terraform -chdir=infra/terraform/eks init
+terraform -chdir=infra/terraform/eks apply
+```
+
+```bash
+infra/deploy-eks.sh
+```
+
+The script pushes the three images to ECR, fills the placeholders in `k8s/overlays/eks` with Terraform outputs, applies it, and prints the gateway URL. Then:
+
+```bash
+RUNTIME=eks ./demo.sh http://GATEWAY_HOST/graphql
+```
+
+Teardown, in this order. The load balancer belongs to Kubernetes, not Terraform, and it blocks the VPC from being deleted:
+
+```bash
+kubectl -n payledger delete svc gateway
+terraform -chdir=infra/terraform/eks destroy
+terraform -chdir=infra/terraform/aws destroy
+```
+
+Postgres, Redis and Kafka run in the cluster with `emptyDir` storage (EKS has no volume driver without the EBS CSI add-on). RDS, ElastiCache and MSK are the production choice.
+
 ### Load test
 
 ```bash
@@ -125,6 +197,16 @@ On Docker Desktop without host networking, drop `--network host` and add `-e URL
 
 **One GetAccounts call per page.** `Transfer.from` and `Transfer.to` load through one shared DataLoader, so 20 transfers cost one `GetAccounts` RPC. Two `@BatchMapping` methods would register one loader per field, which makes two calls. Accounts the caller does not own come back with `balanceCents` 0.
 
+**Withdrawal saga.** `withdraw` moves the amount from `balance_cents` to `held_cents` (entry `hold`), inserts a PENDING withdrawal and an outbox row in one transaction, and returns at once. The publisher sends that row to Step Functions instead of Kafka. The state machine calls the bank Lambda (retrying `BankUnavailable` 3 times with backoff), then asks the ledger to settle or release. Settle drops the hold because the money left; release returns it to the balance (entry `release`). Every balance still equals the sum of its entries, and every `held_cents` equals the sum of that account's PENDING withdrawals.
+
+**Callback with a task token.** Settle and Release use `sqs:sendMessage.waitForTaskToken`: Step Functions puts the action and a token on SQS and waits. The worker applies the action in Postgres, calls `SendTaskSuccess` with the token, then deletes the message. If it dies before the delete, SQS redelivers and the repeat is a no-op because the withdrawal is no longer PENDING. If the token has expired, the worker logs it and still deletes the message.
+
+**Starting the saga once.** The execution name is `withdrawal-<id>-<timestamp>`, stored in the outbox row. A re-sent row reuses the name, and Step Functions does not start a second execution with the same name.
+
+**AWS is opt-in.** With `AWS_ENABLED=false` (the default) the ledger creates no AWS clients, skips saga rows in the outbox, and refuses withdrawals instead of holding money nothing will ever release. Compose, CI and the tests need no credentials.
+
+**IRSA on EKS.** The ledger pods run as the `ledger` service account. EKS injects a web identity token, and the AWS SDK exchanges it for the IAM role's credentials, so the cluster stores no access keys. Only that service account in that namespace can assume the role, and the role only has `StartExecution`, `SendTaskSuccess`, and receive/delete on the queue.
+
 ## Measured results
 
 Docker Compose on one 4-vCPU, 15 GB Linux VM. All containers and k6 shared the machine. k6 2.3.0, `loadtest/transfers.js` with 50 virtual users (30 s ramp up, 2 min hold, 30 s ramp down) doing 1-cent transfers round-robin over 2000 users.
@@ -155,4 +237,7 @@ Not measured yet: the kind cluster and the gateway HPA scaling under load.
 - Reusing an idempotency key with different amounts returns the original transfer instead of an error.
 - The gateway does not retry ledger calls. If every ledger replica restarts at once, calls fail with "ledger unavailable" until gRPC re-resolves DNS.
 - ingress-nginx is retired upstream (no releases since March 2026). It is fine for a local kind cluster, not for production.
-- No EKS deployment or Terraform yet.
+- Both Terraform stacks pass `terraform fmt` and `validate` in CI but have not been applied yet, so the saga and the EKS deployment have not run against real AWS.
+- A released withdrawal ends in a Fail state, so the `ExecutionsFailed` alarm also fires on bank rejections, including the 666 demo.
+- The EKS VPC has public subnets only and no NAT gateway, to keep it cheap. Production would put nodes in private subnets.
+- The $5 budget only sends email, hours late. It does not stop spending; `terraform destroy` does.
