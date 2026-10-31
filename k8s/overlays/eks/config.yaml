@@ -1,0 +1,18 @@
+# Read by every service through the optional "otel" ConfigMap in the base; there is no Jaeger on EKS.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel
+data:
+  OTEL_TRACES_EXPORTER: none
+---
+# Turns the withdrawal saga on in the ledger.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws
+data:
+  AWS_ENABLED: "true"
+  AWS_REGION: AWS_REGION_VALUE
+  STATE_MACHINE_ARN: STATE_MACHINE_ARN_VALUE
+  WITHDRAWAL_QUEUE_URL: WITHDRAWAL_QUEUE_URL_VALUE

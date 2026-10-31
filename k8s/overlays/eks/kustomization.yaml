@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: payledger
+# The UPPERCASE placeholders (ECR_REGISTRY, LEDGER_ROLE_ARN, *_VALUE) are replaced with Terraform outputs by
+# infra/deploy-eks.sh. No observability stack on EKS; traces are switched off in config.yaml.
+resources:
+  - ../../base
+  - config.yaml
+  - serviceaccount.yaml
+patches:
+  - path: ledger-aws.yaml
+  - path: gateway-loadbalancer.yaml
+  - path: postgres-emptydir.yaml
+    target:
+      kind: StatefulSet
+      name: postgres
+  - path: kafka-emptydir.yaml
+    target:
+      kind: StatefulSet
+      name: kafka
+images:
+  - name: payledger/ledger-service
+    newName: ECR_REGISTRY/payledger/ledger-service
+    newTag: latest
+  - name: payledger/gateway
+    newName: ECR_REGISTRY/payledger/gateway
+    newTag: latest
+  - name: payledger/notifier
+    newName: ECR_REGISTRY/payledger/notifier
+    newTag: latest

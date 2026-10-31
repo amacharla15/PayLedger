@@ -1,0 +1,9 @@
+# Without the EBS CSI add-on EKS cannot provision volumes, so Postgres keeps its data in an emptyDir for the
+# session. A pod restart loses the data; RDS would be the production choice.
+- op: remove
+  path: /spec/volumeClaimTemplates
+- op: add
+  path: /spec/template/spec/volumes/-
+  value:
+    name: data
+    emptyDir: {}

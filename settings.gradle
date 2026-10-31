@@ -1,0 +1,3 @@
+rootProject.name = 'payledger'
+
+include 'proto', 'ledger-service', 'gateway', 'notifier', 'bank-lambda'

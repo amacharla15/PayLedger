@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      # Testcontainers uses the Docker daemon that GitHub-hosted Ubuntu runners already have.
+      - name: Test
+        run: ./gradlew test --no-daemon
+
+      - name: Build images
+        run: |
+          for service in ledger-service gateway notifier; do
+            docker build -f "$service/Dockerfile" -t "payledger/$service:${GITHUB_SHA::7}" .
+          done
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      # lambda.tf hashes the Lambda jar, so it has to exist before validate.
+      - name: Build Lambda jar
+        run: ./gradlew :bank-lambda:jar --no-daemon
+
+      - uses: hashicorp/setup-terraform@v4
+
+      # Checks syntax, types and module inputs without AWS credentials; nothing is created.
+      - name: Validate
+        run: |
+          terraform fmt -check -recursive infra/terraform
+          for stack in aws eks; do
+            terraform -chdir=infra/terraform/$stack init -backend=false -input=false
+            terraform -chdir=infra/terraform/$stack validate
+          done

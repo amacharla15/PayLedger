@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: ledger-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ledger
+    username: payledger
+    password: payledger
+  sql:
+    init:
+      mode: always
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      acks: all
+      properties:
+        max.block.ms: 5000
+
+server:
+  port: 8081
+
+grpc:
+  port: 9090
+
+# The withdrawal saga needs AWS (Step Functions + SQS). Off by default so Compose, CI and tests run without credentials.
+aws:
+  enabled: ${AWS_ENABLED:false}
+  state-machine-arn: ${STATE_MACHINE_ARN:}
+  withdrawal-queue-url: ${WITHDRAWAL_QUEUE_URL:}
+
+management:
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

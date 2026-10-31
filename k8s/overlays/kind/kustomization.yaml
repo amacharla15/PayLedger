@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: payledger
+resources:
+  - ../../base
+  - ../../../observability
+  - ingress.yaml
+  - hpa.yaml
+# Images are built locally and copied into the cluster with `kind load docker-image`.
+images:
+  - name: payledger/ledger-service
+    newTag: dev
+  - name: payledger/gateway
+    newTag: dev
+  - name: payledger/notifier
+    newTag: dev

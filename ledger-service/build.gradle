@@ -1,0 +1,26 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+dependencies {
+    implementation project(':proto')
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
+    implementation 'io.grpc:grpc-netty-shaded'
+    implementation 'io.opentelemetry:opentelemetry-api'
+    implementation platform('software.amazon.awssdk:bom:2.57.7')
+    implementation 'software.amazon.awssdk:sfn'
+    implementation 'software.amazon.awssdk:sqs'
+    runtimeOnly 'software.amazon.awssdk:sts' // lets the default credential chain use IRSA tokens on EKS
+    runtimeOnly 'org.postgresql:postgresql'
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    testImplementation 'org.testcontainers:testcontainers-kafka'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}

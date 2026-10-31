@@ -1,0 +1,19 @@
+# Compose: scrapes every ledger replica (Docker DNS returns one A record per container).
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: ledger-service
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: [ledger-service]
+        type: A
+        port: 8081
+  - job_name: gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [gateway:8080]
+  - job_name: notifier
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [notifier:8082]
