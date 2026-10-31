@@ -2,7 +2,7 @@
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /src
 COPY . .
-RUN --mount=type=cache,target=/root/.gradle ./gradlew :ledger-service:bootJar --no-daemon
+RUN --mount=type=cache,target=/root/.gradle,sharing=locked ./gradlew :ledger-service:bootJar --no-daemon
 
 FROM eclipse-temurin:21-jre
 RUN useradd --system --uid 10001 app
