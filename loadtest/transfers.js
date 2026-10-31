@@ -88,6 +88,9 @@ export default function ({ run, users }) {
   const ok = res.status === 200 && !errors;
   transferDuration.add(res.timings.duration);
   transferErrors.add(!ok);
+  if (!ok && Math.random() < 0.05) {
+    console.warn(`transfer failed: ${res.status} ${JSON.stringify(errors)}`);
+  }
   if (ok) {
     transfersOk.add(1);
   }
