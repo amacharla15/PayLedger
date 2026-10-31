@@ -7,6 +7,6 @@ out/
 *.iml
 .vscode/
 .DS_Store
-infra/terraform/.terraform/
+.terraform/
 *.tfstate
 *.tfstate.*
